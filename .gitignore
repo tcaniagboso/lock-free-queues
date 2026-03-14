@@ -1,0 +1,71 @@
+# =========================
+# Build directories
+# =========================
+build/
+cmake-build*/
+out/
+bin/
+
+# =========================
+# CMake generated files
+# =========================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+CTestTestfile.cmake
+install_manifest.txt
+
+# =========================
+# Compiled objects
+# =========================
+*.o
+*.obj
+*.so
+*.a
+*.lib
+*.dll
+*.exe
+*.out
+
+# =========================
+# Debug / profiling
+# =========================
+*.dSYM/
+*.prof
+*.gprof
+*.gcda
+*.gcno
+*.gcov
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# IDE files
+# =========================
+
+# VSCode
+.vscode/
+
+# CLion / JetBrains
+.idea/
+
+# Visual Studio
+.vs/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Temporary files
+# =========================
+*~
+*.swp
+*.swo
