@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <memory>
 
-namespace spsc {
+namespace lock_free {
     template<typename T>
     class SPSCQueue {
     private:
@@ -84,5 +84,5 @@ namespace spsc {
         tail_.store(tail + 1, std::memory_order_release);
         return true;
     }
-} // namespace spsc
+} // namespace lock_free
 

@@ -1,10 +1,13 @@
 #include <algorithm>
+#include <condition_variable>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <thread>
 #include <vector>
@@ -43,13 +46,13 @@ struct Stats {
 using clk = std::chrono::steady_clock;
 using ns = std::chrono::nanoseconds;
 
-void producer_worker(spsc::SPSCQueue<int> &spsc_queue, uint64_t num_operations, std::vector<uint64_t> &latencies) {
+void lf_producer_worker(lock_free::SPSCQueue<int> &lf_queue, uint64_t num_operations, std::vector<uint64_t> &latencies) {
     for (uint64_t i = 0; i < num_operations; i++) {
         int value = i % 256;
         uint64_t latency;
         while (true) {
             auto start = clk::now();
-            if (spsc_queue.try_push(value)) {
+            if (lf_queue.try_push(value)) {
                 auto end = clk::now();
                 latency = std::chrono::duration_cast<ns>(end - start).count();
                 break;
@@ -60,7 +63,7 @@ void producer_worker(spsc::SPSCQueue<int> &spsc_queue, uint64_t num_operations, 
     }
 }
 
-void consumer_worker(spsc::SPSCQueue<int> &spsc_queue, uint64_t num_operations, std::vector<uint64_t> &latencies) {
+void lf_consumer_worker(lock_free::SPSCQueue<int> &spsc_queue, uint64_t num_operations, std::vector<uint64_t> &latencies) {
     for (uint64_t i = 0; i < num_operations; i++) {
         int value;
         uint64_t latency;
@@ -73,6 +76,43 @@ void consumer_worker(spsc::SPSCQueue<int> &spsc_queue, uint64_t num_operations, 
             }
         }
 
+        latencies[i] = latency;
+    }
+}
+
+void mtx_producer_worker(std::queue<int> &mtx_queue, uint64_t num_operations, std::vector<uint64_t> &latencies,
+                         uint64_t capacity, std::mutex &mtx, std::condition_variable &cv) {
+    for (uint64_t i = 0; i < num_operations; i++) {
+        int val = i % 256;
+        auto start = clk::now();
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [&]() {
+            return mtx_queue.size() < capacity;
+        });
+        mtx_queue.push(val);
+        lock.unlock();
+        cv.notify_one();
+        auto end = clk::now();
+
+        uint64_t latency = std::chrono::duration_cast<ns>(end - start).count();
+        latencies[i] = latency;
+    }
+}
+
+void mtx_consumer_worker(std::queue<int> &mtx_queue, uint64_t num_operations, std::vector<uint64_t> &latencies,
+                         std::mutex &mtx, std::condition_variable &cv) {
+    for (uint64_t i = 0; i < num_operations; i++) {
+        auto start = clk::now();
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [&]() {
+            return !mtx_queue.empty();
+        });
+        int val = mtx_queue.front();
+        mtx_queue.pop();
+        lock.unlock();
+        cv.notify_one();
+        auto end = clk::now();
+        uint64_t latency = std::chrono::duration_cast<ns>(end - start).count();
         latencies[i] = latency;
     }
 }
@@ -117,31 +157,61 @@ int main(int argc, char *argv[]) {
     size_t num_push = std::stoull(argv[2]);
     size_t num_pop = std::stoull(argv[3]);
 
-    spsc::SPSCQueue<int> spsc_queue{capacity};
+    lock_free::SPSCQueue<int> lf_queue{capacity};
+    std::queue<int> mtx_queue{};
+    std::mutex mtx{};
+    std::condition_variable cv{};
 
     // Latency arrays
-    std::vector<uint64_t> push_latencies(num_push, std::numeric_limits<uint64_t>::max());
-    std::vector<uint64_t> pop_latencies(num_pop, std::numeric_limits<uint64_t>::max());
+    std::vector<uint64_t> lf_push_latencies(num_push, std::numeric_limits<uint64_t>::max());
+    std::vector<uint64_t> lf_pop_latencies(num_pop, std::numeric_limits<uint64_t>::max());
+    std::vector<uint64_t> mtx_push_latencies(num_push, std::numeric_limits<uint64_t>::max());
+    std::vector<uint64_t> mtx_pop_latencies(num_pop, std::numeric_limits<uint64_t>::max());
+
+    // warm_up
 
     // Operations
-    auto start = clk::now();
-    std::thread producer(&producer_worker, std::ref(spsc_queue), num_push, std::ref(push_latencies));
-    std::thread consumer(&consumer_worker, std::ref(spsc_queue), num_pop, std::ref(pop_latencies));
-    consumer.join();
-    producer.join();
-    auto end = clk::now();
+    // lock_free  queue
+    auto lf_start = clk::now();
+    std::thread lf_producer(&lf_producer_worker, std::ref(lf_queue), num_push, std::ref(lf_push_latencies));
+    std::thread lf_consumer(&lf_consumer_worker, std::ref(lf_queue), num_pop, std::ref(lf_pop_latencies));
+    lf_consumer.join();
+    lf_producer.join();
+    auto lf_end = clk::now();
+
+    // mutex queue
+    auto mtx_start = clk::now();
+    std::thread mtx_producer(&mtx_producer_worker, std::ref(mtx_queue), num_push, std::ref(mtx_push_latencies),
+                             capacity, std::ref(mtx), std::ref(cv));
+    std::thread mtx_consumer(&mtx_consumer_worker, std::ref(mtx_queue), num_pop, std::ref(mtx_pop_latencies),
+                             std::ref(mtx), std::ref(cv));
+    mtx_producer.join();
+    mtx_consumer.join();
+    auto mtx_end = clk::now();
 
     // Benchmarking
-    double total_time = std::chrono::duration<double>(end - start).count();
-    double throughput = static_cast<double>(num_push + num_pop) / total_time;
-    Stats push_stats = compute_stats(push_latencies, num_push);
-    Stats pop_stats = compute_stats(pop_latencies, num_pop);
+    uint64_t total_ops = num_push + num_pop;
+    double lf_total_time = std::chrono::duration<double>(lf_end - lf_start).count();
+    double lf_throughput = static_cast<double>(total_ops) / lf_total_time;
+    Stats lf_push_stats = compute_stats(lf_push_latencies, num_push);
+    Stats lf_pop_stats = compute_stats(lf_pop_latencies, num_pop);
 
-    std::cout << "Throughput: " << throughput << std::endl;
+    std::cout << "Lock Free Queue Throughput: " << lf_throughput << std::endl;
     std::cout << std::endl;
-    push_stats.print("PUSH");
+    lf_push_stats.print("PUSH");
     std::cout << std::endl;
-    pop_stats.print("POP");
+    lf_pop_stats.print("POP");
+
+    double mtx_total_time = std::chrono::duration<double>(mtx_end - mtx_start).count();
+    double mtx_throughput = static_cast<double>(total_ops) / mtx_total_time;
+    Stats mtx_push_stats = compute_stats(mtx_push_latencies, num_push);
+    Stats mtx_pop_stats = compute_stats(mtx_pop_latencies, num_pop);
+
+    std::cout << "\nMutex Queue Throughput: " << mtx_throughput << std::endl;
+    std::cout << std::endl;
+    mtx_push_stats.print("PUSH");
+    std::cout << std::endl;
+    mtx_pop_stats.print("POP");
 
     return 0;
 }
