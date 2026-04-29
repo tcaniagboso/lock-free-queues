@@ -1,10 +1,10 @@
 #include <array>
 #include <cstdint>
 
-#include "../include/spsc_queue.hpp"
-#include "lockfree_queue_experiment.hpp"
-#include "mutex_queue_experiment.hpp"
-#include "payload.hpp"
+#include "spsc/queue.hpp"
+#include "experiments/lockfree_queue_experiment.hpp"
+#include "experiments/mutex_queue_experiment.hpp"
+#include "payload/payload.hpp"
 
 namespace benchmark {
     constexpr std::array<size_t, 4> capacities{
@@ -47,7 +47,7 @@ namespace benchmark {
                         std::cout << "Pop Operations: " << pop_ops << '\n';
                         std::cout << std::string(50, '=') << '\n';
 
-                        LockFreeQueueExperiment<lock_free::SPSCQueue<Payload>, Payload> lf_experiment{
+                        LockFreeQueueExperiment<lock_free::spsc::Queue<Payload>, Payload> lf_experiment{
                                 producers,
                                 consumers,
                                 capacity,

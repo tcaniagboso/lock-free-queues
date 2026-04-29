@@ -1,84 +1,75 @@
-# Lock-Free SPSC Queue (C++)
+# Lock-Free Queues & Benchmarking Suite
 
-This project implements a **bounded lock-free single-producer single-consumer (SPSC) queue** in modern C++.  
+A C++ project for implementing and benchmarking bounded lock-free queue variants.
 
-The goal is to explore low-latency concurrent data structures and understand the practical effects of memory ordering, cache behavior, and contention.
-
-The queue is implemented using C++ atomics and a ring buffer, with careful attention to minimizing synchronization overhead and avoiding false sharing.
+This project explores low-latency concurrent data structures, memory ordering, cache behavior, false sharing, and API design for concurrent systems.
 
 ---
 
-## Features
+## Status
 
-- Lock-free **bounded ring buffer queue**
-- **Single Producer / Single Consumer** concurrency model
-- **Acquire / Release memory ordering**
-- **Cache-line alignment (`alignas(64)`)** to prevent false sharing
-- **Producer/consumer microbenchmark**
-- Latency statistics:
-  - Average latency
-  - p50 / p95 / p999 latency
-  - Min / Max latency
-- Throughput measurement
+Work in progress.
 
----
+Implemented queue variants:
 
-## Queue Design
+- SPSC: Single Producer Single Consumer
+- MPSC: Multi Producer Single Consumer
+- SPMC: Single Producer Multi Consumer
 
-The queue uses two atomic counters:
+Planned:
 
-- head → next element to be popped
-- tail → next element to be pushed
-    
-A fixed-size ring buffer stores the elements.  
-Head and tail counters grow monotonically and are mapped into the buffer using modulo indexing.
-
-Producer thread:
-- write value → update tail (release)
-
-Consumer thread:
-- read value → update head (release)
-
-Acquire loads ensure proper synchronization between producer and consumer without using locks.
+- MPMC: Multi Producer Multi Consumer using sequence-numbered slots
+- Updated benchmark reports across all queue variants
 
 ---
 
-## Benchmark
+## Goals
 
-A simple microbenchmark measures:
+- Build lock-free queue implementations from scratch
+- Compare different producer/consumer ownership models
+- Study acquire/release memory ordering
+- Understand cache-line padding and false sharing
+- Benchmark latency and throughput under different workloads
 
-- Producer enqueue latency
-- Consumer dequeue latency
-- Overall throughput
+---
 
-Each operation records latency using `std::chrono::steady_clock`.
+## Queue Variants
 
-Statistics reported:
+| Queue | Description                            | Documentation  |
+|-------|----------------------------------------|----------------|
+| SPSC  | One producer, one consumer             | `docs/spsc.md` |
+| MPSC  | Multiple producers, one consumer       | `docs/mpsc.md` |
+| SPMC  | One producer, multiple consumers       | `docs/spmc.md` |
+| MPMC  | Multiple producers, multiple consumers | In progress    |
 
+---
+
+## API Philosophy
+
+Each queue exposes two operation styles:
+
+- `try_push` / `try_pop`
+  - non-blocking
+  - return immediately
+  - used for benchmarking and fail-fast workloads
+
+- `push` / `pop`
+  - convenience methods
+  - spin using `_mm_pause()` until the operation succeeds
+
+---
+
+## Benchmarking
+
+The benchmark suite measures:
+
+- throughput
 - average latency
-- p50
-- p95
-- p999
-- min / max
+- p50 / p95 / p999 latency
+- min / max latency
 
-Due to clock resolution limits, extremely fast operations may appear as `0 ns`.
+Benchmark results are being updated as additional queue variants are implemented.
 
-Example output:
-```bash
-Throughput: 2.7e+07 ops/sec
-
-PUSH:
-  Avg latency (ns): 49
-  p50 latency (ns): 0
-  p95 latency (ns): 109
-  p999 latency (ns): 109
-
-POP:
-  Avg latency (ns): 50
-  p50 latency (ns): 0
-  p95 latency (ns): 109
-  p999 latency (ns): 216
-```
 ---
 
 ## Build
@@ -89,64 +80,39 @@ cd build
 cmake ..
 make
 ```
+
 ---
+
 ## Run
 
 ```bash
-./benchmark <capacity> <num_push> <num_pop>
+./queue_benchmark
 ```
 
-Example
-
-```bash
-./benchmark 1024 1000000 1000000
-```
-
-Parameters:
-
-```markdown
-capacity   → queue capacity
-num_push   → number of enqueue operations
-num_pop    → number of dequeue operations
-```
 ---
 
 ## Project Structure
 
-```markdown
-lock-free-spsc-queue
-│
-├── CMakeLists.txt
-├── README.md
-│
+```text
+lock-free-queues
 ├── include
-│   └── spsc_queue.hpp
-│
+│   └── lock_free
+│       ├── spsc
+│       ├── mpsc
+│       ├── spmc
+│       ├── mpmc
+│       └── utils
+├── benchmark
+├── docs
 ├── src
-│   └── main.cpp
-│
-└── build
+├── tests
+└── results
 ```
----
 
-## Future Work
-
-Planned improvements:
-- CPU affinity for more stable benchmarking
-- Warmup phase for microbenchmarks
-- Spin-wait statistics
-- Comparison against mutex-based queues
-- Multi-producer multi-consumer (MPMC) queue implementation
-    
 ---
 
 ## Motivation
 
-Understanding lock-free data structures and memory ordering is essential for building **high-performance concurrent systems**, including:
+Lock-free queues are useful in high-performance systems where predictable latency, low synchronization overhead, and careful ownership boundaries matter.
 
-- trading infrastructure
-- low-latency messaging systems
-- task schedulers
-- real-time pipelines
-    
-This project serves as an exploration of implementing and benchmarking lock-free concurrent structures in modern C++.
+This project is both a queue library and a learning-focused benchmarking environment for understanding practical concurrent programming in modern C++.
