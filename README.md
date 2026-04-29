@@ -78,7 +78,7 @@ Benchmark results are being updated as additional queue variants are implemented
 mkdir build
 cd build
 cmake ..
-make
+make -j
 ```
 
 ---
