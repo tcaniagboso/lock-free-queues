@@ -103,7 +103,7 @@ if CAS fails -> false
 
 - `tail.store(..., release)` publishes newly produced items
 - `tail.load(acquire)` allows consumers to observe producer progress
-- `head.compare_exchange_weak(..., acquire)` claims consumer ownership
+- `head.compare_exchange_weak(..., acq_rel, relaxed)` claims consumer ownership
 - `slot.ready.store(true, release)` publishes slot contents
 - `slot.ready.load(acquire)` ensures safe reads
 - `slot.ready.store(false, release)` marks slot reusable

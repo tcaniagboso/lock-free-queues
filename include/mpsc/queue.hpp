@@ -22,7 +22,11 @@ namespace lock_free::mpsc {
 
     public:
         static constexpr const char *name() {
-            return "Lock-Free MPSC Queue";
+            return "MPSC";
+        }
+
+        static constexpr const char* full_name() {
+            return "Lock-Free Multi Producer Single Consumer Queue";
         }
 
         explicit Queue(size_t capacity);
@@ -155,7 +159,7 @@ namespace lock_free::mpsc {
             return false;
         }
 
-        if (!tail_.value_.compare_exchange_weak(tail, tail + 1, std::memory_order_acquire, std::memory_order_relaxed)) {
+        if (!tail_.value_.compare_exchange_weak(tail, tail + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
             return false;
         }
 

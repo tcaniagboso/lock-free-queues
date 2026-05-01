@@ -20,7 +20,11 @@ namespace lock_free::spsc {
 
     public:
         static constexpr const char *name() {
-            return "Lock-Free SPSC Queue";
+            return "SPSC";
+        }
+
+        static constexpr const char* full_name() {
+            return "Lock-Free Single Producer Single Consumer Queue";
         }
 
         explicit Queue(size_t capacity);

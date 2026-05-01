@@ -6,11 +6,12 @@
 #include <queue>
 #include <thread>
 
-#include "stats.hpp"
+#include "../results/benchmark_result.hpp"
 
-namespace benchmark {
+namespace benchmark::experiments {
     using clk = std::chrono::steady_clock;
     using ns = std::chrono::nanoseconds;
+    using namespace benchmark::results;
 
     template<typename Payload>
     class MutexQueueExperiment {
@@ -18,12 +19,12 @@ namespace benchmark {
         std::queue<Payload> queue_;
         std::mutex mtx_;
         std::condition_variable cv_;
-        size_t num_producers_;
-        size_t num_consumers_;
-        size_t capacity_;
         uint64_t warmup_ops_;
         uint64_t push_ops_;
         uint64_t pop_ops_;
+        size_t num_producers_;
+        size_t num_consumers_;
+        size_t capacity_;
         std::vector<uint64_t> push_latencies_;
         std::vector<uint64_t> pop_latencies_;
         double total_seconds_;
@@ -44,28 +45,30 @@ namespace benchmark {
 
         void run_benchmark();
 
-        void compute_and_print_stats();
+        [[nodiscard]] BenchmarkResult compute_result();
+
+        static void print_result(const BenchmarkResult& result);
     };
 
     template<typename Payload>
-    benchmark::MutexQueueExperiment<Payload>::MutexQueueExperiment(size_t num_producers, size_t num_consumers,
+    MutexQueueExperiment<Payload>::MutexQueueExperiment(size_t num_producers, size_t num_consumers,
                                                                    size_t capacity, uint64_t warmup_ops,
                                                                    uint64_t push_ops, uint64_t pop_ops)
             : queue_{},
               mtx_{},
               cv_{},
-              num_producers_{num_producers},
-              num_consumers_{num_consumers},
-              capacity_{capacity},
               warmup_ops_{warmup_ops},
               push_ops_{push_ops},
               pop_ops_{pop_ops},
+              num_producers_{num_producers},
+              num_consumers_{num_consumers},
+              capacity_{capacity},
               push_latencies_(push_ops),
               pop_latencies_(pop_ops),
               total_seconds_{} {}
 
     template<typename Payload>
-    Stats benchmark::MutexQueueExperiment<Payload>::compute_stats(uint64_t ops, std::vector<uint64_t> &latencies) {
+    Stats MutexQueueExperiment<Payload>::compute_stats(uint64_t ops, std::vector<uint64_t> &latencies) {
         std::sort(latencies.begin(), latencies.end());
         long double sum_latency = 0.0;
         for (uint64_t i = 0; i < ops; i++) {
@@ -94,7 +97,7 @@ namespace benchmark {
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::producer_worker(uint64_t ops, uint64_t offset, bool record_latency) {
+    void MutexQueueExperiment<Payload>::producer_worker(uint64_t ops, uint64_t offset, bool record_latency) {
         Payload p;
         for (uint64_t i = 0; i < ops; i++) {
             p.id = offset + i;
@@ -123,7 +126,7 @@ namespace benchmark {
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::consumer_worker(uint64_t ops, uint64_t offset, bool record_latency) {
+    void MutexQueueExperiment<Payload>::consumer_worker(uint64_t ops, uint64_t offset, bool record_latency) {
         Payload p;
         for (uint64_t i = 0; i < ops; i++) {
             if (record_latency) {
@@ -153,7 +156,7 @@ namespace benchmark {
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::run_operations(uint64_t push_ops, uint64_t pop_ops,
+    void MutexQueueExperiment<Payload>::run_operations(uint64_t push_ops, uint64_t pop_ops,
                                                                   bool record_latency) {
         std::vector<std::thread> producers{};
         std::vector<std::thread> consumers{};
@@ -202,12 +205,12 @@ namespace benchmark {
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::warmup() {
+    void MutexQueueExperiment<Payload>::warmup() {
         run_operations(warmup_ops_, warmup_ops_, false);
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::run_benchmark() {
+    void MutexQueueExperiment<Payload>::run_benchmark() {
         const auto start = clk::now();
         run_operations(push_ops_, pop_ops_, true);
         const auto end = clk::now();
@@ -215,16 +218,27 @@ namespace benchmark {
     }
 
     template<typename Payload>
-    void benchmark::MutexQueueExperiment<Payload>::compute_and_print_stats() {
+    BenchmarkResult MutexQueueExperiment<Payload>::compute_result() {
         auto total_ops = static_cast<double>(push_ops_ + pop_ops_);
         double throughput = total_ops / total_seconds_;
-        Stats push_stats = compute_stats(push_ops_, push_latencies_);
-        Stats pop_stats = compute_stats(pop_ops_, pop_latencies_);
 
-        std::cout << "[Mutex Queue]" << '\n';
-        std::cout << "Throughput (ops/sec): " << throughput << '\n';
-        push_stats.print("PUSH");
-        std::cout << '\n';
-        pop_stats.print("POP");
+        BenchmarkResult result;
+
+        result.queue_ = "Mutex";
+        result.throughput_ = throughput;
+
+        result.push_stats_ = compute_stats(push_ops_, push_latencies_);
+        result.pop_stats_  = compute_stats(pop_ops_, pop_latencies_);
+
+        return result;
     }
-} // namespace benchmark
+
+    template<typename Payload>
+    void MutexQueueExperiment<Payload>::print_result(const BenchmarkResult& result) {
+        std::cout << '[' << result.queue_ << ']' << '\n';
+        std::cout << "Throughput (ops/sec): " << result.throughput_ << '\n';
+        result.push_stats_.print("PUSH");
+        std::cout << '\n';
+        result.pop_stats_.print("POP");
+    }
+} // namespace benchmark::experiments

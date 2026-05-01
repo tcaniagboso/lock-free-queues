@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-namespace benchmark {
+namespace benchmark::payload {
     struct Payload16 {
         uint64_t id;
         std::array<char, 16 - sizeof(uint64_t)> data;
@@ -21,4 +21,4 @@ namespace benchmark {
         std::array<char, 256 - sizeof(uint64_t)> data;
     };
     static_assert(sizeof(Payload256) == 256);
-} // namespace benchmark
+} // namespace benchmark::payload

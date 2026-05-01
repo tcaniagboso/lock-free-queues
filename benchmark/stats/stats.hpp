@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-namespace benchmark {
+namespace benchmark::stats {
     struct Stats {
         uint64_t p50_latency_ns_;
         uint64_t p95_latency_ns_;
@@ -12,6 +12,8 @@ namespace benchmark {
         uint64_t min_latency_ns_;
         uint64_t max_latency_ns_;
         double avg_latency_ns_;
+
+        Stats() = default;
 
         Stats(uint64_t p50_latency_ns, uint64_t p95_latency_ns, uint64_t p999_latency_ns, uint64_t min_latency_ns,
               uint64_t max_latency_ns, double avg_latency_ns)
@@ -32,4 +34,4 @@ namespace benchmark {
             std::cout << "\tMax latency (ns): " << max_latency_ns_ << '\n';
         }
     };
-} // namespace benchmark
+} // namespace benchmark::stats

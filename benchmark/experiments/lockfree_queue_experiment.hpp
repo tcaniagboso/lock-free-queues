@@ -5,22 +5,25 @@
 #include <vector>
 #include <thread>
 
-#include "stats.hpp"
+#include "../results/benchmark_result.hpp"
 
-namespace benchmark {
+namespace benchmark::experiments {
     using clk = std::chrono::steady_clock;
     using ns = std::chrono::nanoseconds;
+    using namespace benchmark::results;
 
-    template<typename Queue, typename Payload>
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
     class LockFreeQueueExperiment {
     private:
         Queue queue_;
-        size_t num_producers_;
-        size_t num_consumers_;
-        size_t capacity_;
+        PushPolicy push_policy_;
+        PopPolicy pop_policy_;
         uint64_t warmup_ops_;
         uint64_t push_ops_;
         uint64_t pop_ops_;
+        size_t num_producers_;
+        size_t num_consumers_;
+        size_t capacity_;
         std::vector<uint64_t> push_latencies_;
         std::vector<uint64_t> pop_latencies_;
         double total_seconds_;
@@ -42,29 +45,32 @@ namespace benchmark {
 
         void run_benchmark();
 
-        void compute_and_print_stats();
+        [[nodiscard]] BenchmarkResult compute_result();
+
+        static void print_result(const BenchmarkResult& result);
 
     };
 
-    template<typename Queue, typename Payload>
-    benchmark::LockFreeQueueExperiment<Queue, Payload>::LockFreeQueueExperiment(size_t num_producers,
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::LockFreeQueueExperiment(size_t num_producers,
                                                                                 size_t num_consumers,
                                                                                 size_t capacity, uint64_t warmup_ops,
                                                                                 uint64_t push_ops, uint64_t pop_ops)
             : queue_{capacity},
-              num_producers_{num_producers},
-              num_consumers_{num_consumers},
-              capacity_{capacity},
+              push_policy_{},
+              pop_policy_{},
               warmup_ops_{warmup_ops},
               push_ops_{push_ops},
               pop_ops_{pop_ops},
+              num_producers_{num_producers},
+              num_consumers_{num_consumers},
+              capacity_{capacity},
               push_latencies_(push_ops),
               pop_latencies_(pop_ops),
               total_seconds_{0} {}
 
-    template<typename Queue, typename Payload>
-    Stats
-    benchmark::LockFreeQueueExperiment<Queue, Payload>::compute_stats(uint64_t ops, std::vector<uint64_t> &latencies) {
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    Stats LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::compute_stats(uint64_t ops, std::vector<uint64_t> &latencies) {
         std::sort(latencies.begin(), latencies.end());
         long double sum_latency = 0.0;
         for (uint64_t i = 0; i < ops; i++) {
@@ -92,43 +98,43 @@ namespace benchmark {
         };
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::producer_worker(uint64_t ops, uint64_t offset,
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::producer_worker(uint64_t ops, uint64_t offset,
                                                                              bool record_latency) {
         Payload p;
         for (uint64_t i = 0; i < ops; i++) {
             p.id = offset + i;
             if (record_latency) {
                 const auto start = clk::now();
-                while (!queue_.try_push(p)) {}
+                push_policy_(queue_, p);
                 const auto end = clk::now();
                 uint64_t latency = std::chrono::duration_cast<ns>(end - start).count();
                 push_latencies_[offset + i] = latency;
             } else {
-                while (!queue_.try_push(p)) {}
+                push_policy_(queue_, p);
             }
         }
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::consumer_worker(uint64_t ops, uint64_t offset,
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::consumer_worker(uint64_t ops, uint64_t offset,
                                                                              bool record_latency) {
         Payload p;
         for (uint64_t i = 0; i < ops; i++) {
             if (record_latency) {
                 const auto start = clk::now();
-                while (!queue_.try_pop(p)) {}
+                pop_policy_(queue_, p);
                 const auto end = clk::now();
                 uint64_t latency = std::chrono::duration_cast<ns>(end - start).count();
                 pop_latencies_[offset + i] = latency;
             } else {
-                while (!queue_.try_pop(p)) {}
+                pop_policy_(queue_, p);
             }
         }
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::run_operations(uint64_t push_ops, uint64_t pop_ops,
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::run_operations(uint64_t push_ops, uint64_t pop_ops,
                                                                             bool record_latency) {
         std::vector<std::thread> producers{};
         std::vector<std::thread> consumers{};
@@ -136,7 +142,7 @@ namespace benchmark {
         producers.reserve(num_producers_);
         consumers.reserve(num_consumers_);
 
-        using Self = LockFreeQueueExperiment<Queue, Payload>;
+        using Self = LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>;
         uint64_t base_push_ops = num_producers_ ? push_ops / num_producers_ : 0;
         uint64_t base_pop_ops = num_consumers_ ? pop_ops / num_consumers_ : 0;
 
@@ -145,7 +151,9 @@ namespace benchmark {
             uint64_t offset = i * base_push_ops;
             uint64_t ops = base_push_ops;
 
-            if (i == num_producers_ - 1) ops = push_ops - offset;
+            if (i == num_producers_ - 1) {
+                ops = push_ops - offset;
+            }
 
             producers.emplace_back(
                     &Self::producer_worker,
@@ -161,7 +169,9 @@ namespace benchmark {
             uint64_t offset = i * base_pop_ops;
             uint64_t ops = base_pop_ops;
 
-            if (i == num_consumers_ - 1) ops = pop_ops - offset;
+            if (i == num_consumers_ - 1) {
+                ops = pop_ops - offset;
+            }
 
             consumers.emplace_back(
                     &Self::consumer_worker,
@@ -177,30 +187,42 @@ namespace benchmark {
         for (auto &c: consumers) c.join();
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::warmup() {
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::warmup() {
         run_operations(warmup_ops_, warmup_ops_, false);
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::run_benchmark() {
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::run_benchmark() {
         const auto start = clk::now();
         run_operations(push_ops_, pop_ops_, true);
         const auto end = clk::now();
         total_seconds_ = std::chrono::duration<double>(end - start).count();
     }
 
-    template<typename Queue, typename Payload>
-    void benchmark::LockFreeQueueExperiment<Queue, Payload>::compute_and_print_stats() {
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    BenchmarkResult LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::compute_result() {
         auto total_ops = static_cast<double>(push_ops_ + pop_ops_);
         double throughput = total_ops / total_seconds_;
-        Stats push_stats = compute_stats(push_ops_, push_latencies_);
-        Stats pop_stats = compute_stats(pop_ops_, pop_latencies_);
 
-        std::cout << '[' << queue_.name() << ']' << '\n';
-        std::cout << "Throughput (ops/sec): " << throughput << '\n';
-        push_stats.print("PUSH");
-        std::cout << '\n';
-        pop_stats.print("POP");
+        BenchmarkResult result;
+
+        result.queue_ = Queue::name();
+        result.policy_ = PushPolicy::name();
+        result.throughput_ = throughput;
+
+        result.push_stats_ = compute_stats(push_ops_, push_latencies_);
+        result.pop_stats_  = compute_stats(pop_ops_, pop_latencies_);
+
+        return result;
     }
-} // namespace benchmark
+
+    template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
+    void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::print_result(const BenchmarkResult& result) {
+        std::cout << '[' << result.queue_ << ']' << '\n';
+        std::cout << "Throughput (ops/sec): " << result.throughput_ << '\n';
+        result.push_stats_.print("PUSH");
+        std::cout << '\n';
+        result.pop_stats_.print("POP");
+    }
+} // namespace benchmark::experiments

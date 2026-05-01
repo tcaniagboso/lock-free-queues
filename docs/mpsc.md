@@ -96,7 +96,7 @@ head.store(head + 1, release)
 ## Memory Ordering
 
 - `fetch_add(relaxed)` → unique slot assignment
-- `compare_exchange_weak(..., acquire, relaxed)` → fail-fast slot claim in `try_push`
+- `compare_exchange_weak(..., acq_rel, relaxed)` → fail-fast slot claim in `try_push`
 - `ready.store(true, release)` → publishes producer data
 - `ready.load(acquire)` → consumer safely observes published data
 - `head.load(acquire)` → producer observes completed consumer progress
