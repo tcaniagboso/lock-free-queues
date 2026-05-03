@@ -20,11 +20,12 @@ Lock-free bounded **Multi-Producer Single Consumer (MPSC)** queue implemented us
   - non-blocking
   - return immediately
   - may fail under contention or transient slot unavailability
-  - used by the benchmark suite
+  - useful for polling loops, fail-fast workloads, and explicit caller-controlled retry logic
 
 - `push` / `pop`
-  - convenience operations
-  - spin using `_mm_pause()` until the operation completes
+  - blocking spin-wait operations
+  - spin using `_mm_pause()` until the operation succeeds
+  - useful for continuous producer-consumer pipelines where completion is expected
 
 ---
 
@@ -42,10 +43,9 @@ Each slot contains:
 
 ---
 
-## Push (Producer)
+## Push (Producers)
 
-```cpp
-`push()` uses `fetch_add` to reserve a unique slot:
+`push()` uses `fetch_add` to reserve a unique slot and is optimized for sustained multi-producer throughput:
 
 ```cpp
 head = head.load(acquire)
@@ -55,13 +55,14 @@ while (tail - head >= capacity)
     pause
 
 pos = tail.fetch_add(1, relaxed)
-        
-while (pos - head >= capacity)
+
+while (pos - head.load(acquire) >= capacity)
     pause
-    
+
 index = pos % capacity
 
-wait until slot.ready == false
+while (slot.ready == true)
+    pause
 
 write value
 slot.ready.store(true, release)
@@ -105,8 +106,8 @@ head.store(head + 1, release)
 
 ## Performance Characteristics
 
-- Non-blocking `try_push` / `try_pop` suitable for benchmarking and fail-fast semantics
-- Convenience `push` / `pop` wrappers using spin-waiting until success
+- Non-blocking `try_push` / `try_pop` suitable for fail-fast semantics and caller-controlled retry logic
+- Blocking `push` / `pop` operations optimized for continuous producer-consumer workloads
 - `push()` optimized for sustained multi-producer throughput using `fetch_add`
 - `try_push()` optimized for immediate return using CAS-based slot claims
 - Per-slot readiness flags reduce producer-consumer coordination overhead

@@ -225,6 +225,7 @@ namespace benchmark::experiments {
         BenchmarkResult result;
 
         result.queue_ = "Mutex";
+        result.policy_ = "Baseline";
         result.throughput_ = throughput;
 
         result.push_stats_ = compute_stats(push_ops_, push_latencies_);
@@ -236,6 +237,7 @@ namespace benchmark::experiments {
     template<typename Payload>
     void MutexQueueExperiment<Payload>::print_result(const BenchmarkResult& result) {
         std::cout << '[' << result.queue_ << ']' << '\n';
+        std::cout << "Policy: " << result.policy_ << '\n';
         std::cout << "Throughput (ops/sec): " << result.throughput_ << '\n';
         result.push_stats_.print("PUSH");
         std::cout << '\n';

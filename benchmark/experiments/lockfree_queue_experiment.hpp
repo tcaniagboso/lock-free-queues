@@ -220,6 +220,7 @@ namespace benchmark::experiments {
     template<typename Queue, typename Payload, typename PushPolicy, typename PopPolicy>
     void LockFreeQueueExperiment<Queue, Payload, PushPolicy, PopPolicy>::print_result(const BenchmarkResult& result) {
         std::cout << '[' << result.queue_ << ']' << '\n';
+        std::cout << "Policy: " << result.policy_ << '\n';
         std::cout << "Throughput (ops/sec): " << result.throughput_ << '\n';
         result.push_stats_.print("PUSH");
         std::cout << '\n';

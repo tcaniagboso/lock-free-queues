@@ -18,14 +18,15 @@ Lock-free bounded **Multi-Producer Multi-Consumer (MPMC)** queue implemented usi
 ## API Semantics
 
 - `try_push` / `try_pop`
-    - non-blocking
-    - return immediately
-    - may fail under contention or transient slot state mismatch
-    - intended for benchmarking, polling loops, and fail-fast workloads
+  - non-blocking
+  - return immediately
+  - may fail under contention or transient slot state mismatch
+  - useful for polling loops, fail-fast workloads, and explicit caller-controlled retry logic
 
 - `push` / `pop`
-    - convenience operations
-    - spin using `_mm_pause()` until the operation succeeds
+  - blocking spin-wait operations
+  - spin using `_mm_pause()` until the operation succeeds
+  - useful for continuous producer-consumer pipelines where completion is expected
 
 ---
 
@@ -126,8 +127,8 @@ This ensures safe handoff of data between producers and consumers.
 
 ## Performance Characteristics
 
-- Non-blocking `try_push` / `try_pop` suitable for benchmarking and fail-fast semantics
-- Convenience `push` / `pop` wrappers using spin-waiting until success
+- Non-blocking `try_push` / `try_pop` suitable for fail-fast semantics and caller-controlled retry logic
+- Blocking `push` / `pop` operations optimized for continuous producer-consumer workloads
 - Fully concurrent producer and consumer paths
 - Sequence-number slots avoid separate ready flags
 - Cache-line padded indices reduce false sharing

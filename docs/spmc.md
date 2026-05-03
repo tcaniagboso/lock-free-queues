@@ -17,14 +17,15 @@ Lock-free bounded **Single Producer Multi-Consumer (SPMC)** queue implemented us
 ## API Semantics
 
 - `try_push` / `try_pop`
-    - non-blocking
-    - return immediately
-    - may fail under contention or transient slot unavailability
-    - intended for benchmarking, polling loops, and explicit caller retry logic
+  - non-blocking
+  - return immediately
+  - may fail under contention or transient slot unavailability
+  - useful for polling loops, fail-fast workloads, and explicit caller-controlled retry logic
 
 - `push` / `pop`
-    - convenience operations
-    - spin using `_mm_pause()` until the operation succeeds
+  - blocking spin-wait operations
+  - spin using `_mm_pause()` until the operation succeeds
+  - useful for continuous producer-consumer pipelines where completion is expected
 
 ---
 
@@ -78,12 +79,12 @@ head = head.load(relaxed)
 tail = tail.load(acquire)
 
 while (head >= tail || !CAS(head, head + 1))
-pause
+    pause
 
 index = head % capacity
 
 while (slot.ready == false)
-pause
+    pause
 
 read value
 slot.ready.store(false, release)
@@ -112,8 +113,8 @@ if CAS fails -> false
 
 ## Performance Characteristics
 
-- Non-blocking `try_push` / `try_pop` suitable for benchmarking and fail-fast semantics
-- Convenience `push` / `pop` wrappers using spin-waiting until success
+- Non-blocking `try_push` / `try_pop` suitable for fail-fast semantics and caller-controlled retry logic
+- Blocking `push` / `pop` operations optimized for continuous producer-consumer workloads
 - Single producer avoids enqueue-side CAS contention
 - Multi-consumer dequeue path coordinated via CAS on `head`
 - FIFO consumption order

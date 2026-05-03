@@ -22,14 +22,14 @@ The queue uses two monotonically increasing counters:
 The queue provides two operation styles:
 
 - `try_push` / `try_pop`
-    - non-blocking
-    - return immediately
-    - used by the benchmark suite for latency and throughput measurements
+  - non-blocking
+  - return immediately
+  - useful for polling loops, fail-fast workloads, and explicit caller-controlled retry logic
 
 - `push` / `pop`
-    - convenience wrappers
-    - spin using `_mm_pause()` until the operation succeeds
-    - useful when the caller wants the operation to complete instead of manually retrying
+  - blocking spin-wait operations
+  - spin using `_mm_pause()` until the operation succeeds
+  - useful for continuous producer-consumer pipelines where completion is expected
 
 ---
 
@@ -91,8 +91,8 @@ This ensures:
 
 ## Performance Characteristics
 
-- Non-blocking `try_push` / `try_pop` suitable for benchmarking and polling workloads
-- Convenience `push` / `pop` wrappers using spin-waiting until success
+- Non-blocking `try_push` / `try_pop` suitable for fail-fast semantics and caller-controlled retry logic
+- Blocking `push` / `pop` operations optimized for continuous producer-consumer workloads
 - No CAS operations required
 - No write-side contention (single producer / single consumer ownership model)
 - Cache-line padded indices reduce false sharing
